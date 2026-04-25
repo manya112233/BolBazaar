@@ -1,0 +1,49 @@
+{
+  "listings": [],
+  "orders": [],
+  "notifications": [],
+  "insights": [],
+  "seller_profiles": [
+    {
+      "seller_id": "919971497076",
+      "seller_name": "Manya",
+      "store_name": "Manya Store",
+      "preferred_language": "hi",
+      "seller_type": null,
+      "default_pickup_location": "Shanti Nagar",
+      "latitude": null,
+      "longitude": null,
+      "place_id": null,
+      "registration_status": "active",
+      "verification_status": "unverified",
+      "verification_method": null,
+      "verification_number": null,
+      "verification_proof_url": null,
+      "verification_notes": null,
+      "source_channel": "whatsapp",
+      "created_at": "2026-04-18T16:41:08.848125",
+      "updated_at": "2026-04-18T16:41:08.848134"
+    }
+  ],
+  "seller_sessions": [],
+  "whatsapp_message_fingerprints": {
+    "a2f45794476176d1f4777d4143d72ba387cd883b56d66ccca69502388b9b1423": {
+      "status": "processed",
+      "updated_at": "2026-04-18T16:41:08.883097+00:00"
+    }
+  },
+  "whatsapp_message_states": {
+    "wamid.test-201": {
+      "status": "processed",
+      "updated_at": "2026-04-18T16:41:08.895662+00:00"
+    },
+    "wamid.test-202": {
+      "status": "processed",
+      "updated_at": "2026-04-18T16:41:10.019326+00:00"
+    }
+  },
+  "processed_whatsapp_message_ids": [
+    "wamid.test-201",
+    "wamid.test-202"
+  ]
+}

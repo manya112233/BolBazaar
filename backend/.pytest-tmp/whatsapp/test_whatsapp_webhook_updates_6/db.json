@@ -1,0 +1,44 @@
+{
+  "listings": [],
+  "orders": [],
+  "notifications": [],
+  "insights": [],
+  "seller_profiles": [
+    {
+      "seller_id": "919971497076",
+      "seller_name": "Manya",
+      "store_name": "Manya Store",
+      "preferred_language": "hi",
+      "seller_type": null,
+      "default_pickup_location": "Shanti Nagar",
+      "latitude": null,
+      "longitude": null,
+      "place_id": null,
+      "registration_status": "active",
+      "verification_status": "verified",
+      "verification_method": null,
+      "verification_number": null,
+      "verification_proof_url": "proof-media-999",
+      "verification_notes": "Verification proof updated through WhatsApp profile management",
+      "source_channel": "whatsapp",
+      "created_at": "2026-04-18T16:41:41.885079",
+      "updated_at": "2026-04-18T16:41:42.997061"
+    }
+  ],
+  "seller_sessions": [],
+  "whatsapp_message_fingerprints": {},
+  "whatsapp_message_states": {
+    "wamid.test-verify-proof-prompt": {
+      "status": "processed",
+      "updated_at": "2026-04-18T16:41:42.971135+00:00"
+    },
+    "wamid.test-verify-proof-update": {
+      "status": "processed",
+      "updated_at": "2026-04-18T16:41:46.302412+00:00"
+    }
+  },
+  "processed_whatsapp_message_ids": [
+    "wamid.test-verify-proof-prompt",
+    "wamid.test-verify-proof-update"
+  ]
+}
