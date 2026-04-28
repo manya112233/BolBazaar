@@ -275,6 +275,9 @@ class SellerFlowService:
                     image_bytes=image_bytes,
                     image_mime_type=image_mime_type,
                 ),
+                image_url=image_url,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
             )
 
         if self._has_listing_signal(message_text):
@@ -364,12 +367,14 @@ class SellerFlowService:
         draft_message: str | None = None,
         quality_assessment: ProduceQualityAssessment | None = None,
         draft_capture_mode: LedgerCaptureMode | None = None,
+        draft_image_url: str | None = None,
     ) -> None:
         session_kwargs: dict[str, Any] = {
             'seller_id': seller_id,
             'state': state,
             'draft_message': draft_message,
             'draft_capture_mode': draft_capture_mode,
+            'draft_image_url': draft_image_url,
         }
         if quality_assessment is not None:
             session_kwargs.update(
@@ -414,6 +419,21 @@ class SellerFlowService:
             detected_category=session.draft_detected_category,
             estimated_visible_count=session.draft_estimated_visible_count,
         )
+
+    def _listing_image_url(
+        self,
+        *,
+        session: SellerSession | None,
+        image_url: str | None,
+        image_bytes: bytes | None,
+        image_mime_type: str | None,
+    ) -> str | None:
+        resolver = getattr(self.marketplace, 'listing_image_url', None)
+        if callable(resolver):
+            resolved = resolver(image_url, image_bytes, image_mime_type)
+        else:
+            resolved = image_url if image_url and image_url.startswith(('http://', 'https://')) else None
+        return resolved or (str(session.draft_image_url) if session and session.draft_image_url else None)
 
     def _effective_listing_capture_mode(
         self,
@@ -476,11 +496,20 @@ class SellerFlowService:
         *,
         profile: SellerProfile,
         quality_assessment: ProduceQualityAssessment | None,
+        image_url: str | None = None,
+        image_bytes: bytes | None = None,
+        image_mime_type: str | None = None,
     ) -> dict[str, Any]:
         self._save_session(
             profile.seller_id,
             'awaiting_listing_message',
             quality_assessment=quality_assessment,
+            draft_image_url=self._listing_image_url(
+                session=None,
+                image_url=image_url,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+            ),
         )
         listing_prompt = (
             'Send kg and price like this: 20 kilo, 30 rupees kilo. Add pickup only if different.'
@@ -1887,14 +1916,31 @@ class SellerFlowService:
                 draft_message=merged_draft,
                 quality_assessment=quality_assessment,
                 capture_mode=effective_capture_mode,
+                draft_image_url=self._listing_image_url(
+                    session=session,
+                    image_url=image_url,
+                    image_bytes=image_bytes,
+                    image_mime_type=image_mime_type,
+                ),
             )
         if not cleaned and image_url:
-            return self._prompt_for_photo_listing(profile=profile, quality_assessment=quality_assessment)
+            return self._prompt_for_photo_listing(
+                profile=profile,
+                quality_assessment=quality_assessment,
+                image_url=image_url,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+            )
         if not self._has_listing_signal(cleaned):
             return self._continue_listing_draft(
                 profile=profile,
                 draft_message=cleaned,
-                image_url=image_url,
+                image_url=self._listing_image_url(
+                    session=session,
+                    image_url=image_url,
+                    image_bytes=image_bytes,
+                    image_mime_type=image_mime_type,
+                ),
                 quality_assessment=quality_assessment,
                 image_bytes=image_bytes,
                 image_mime_type=image_mime_type,
@@ -1906,11 +1952,22 @@ class SellerFlowService:
                 draft_message=cleaned,
                 quality_assessment=quality_assessment,
                 capture_mode=effective_capture_mode,
+                draft_image_url=self._listing_image_url(
+                    session=session,
+                    image_url=image_url,
+                    image_bytes=image_bytes,
+                    image_mime_type=image_mime_type,
+                ),
             )
         return self._create_listing(
             profile=profile,
             message_text=cleaned,
-            image_url=image_url,
+            image_url=self._listing_image_url(
+                session=session,
+                image_url=image_url,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+            ),
             quality_assessment=quality_assessment,
             image_bytes=image_bytes,
             image_mime_type=image_mime_type,
@@ -1939,7 +1996,12 @@ class SellerFlowService:
         return self._continue_listing_draft(
             profile=profile,
             draft_message=draft_message,
-            image_url=image_url,
+            image_url=self._listing_image_url(
+                session=session,
+                image_url=image_url,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+            ),
             quality_assessment=quality_assessment,
             image_bytes=image_bytes,
             image_mime_type=image_mime_type,
@@ -2000,7 +2062,13 @@ class SellerFlowService:
         cleaned = draft_message.strip()
         if not cleaned:
             if image_url:
-                return self._prompt_for_photo_listing(profile=profile, quality_assessment=quality_assessment)
+                return self._prompt_for_photo_listing(
+                    profile=profile,
+                    quality_assessment=quality_assessment,
+                    image_url=image_url,
+                    image_bytes=image_bytes,
+                    image_mime_type=image_mime_type,
+                )
             return self._send_text(profile, self._copy(profile, 'listing_prompt_short'), handled='seller_listing_retry')
 
         cleaned = self._apply_visual_product_hint(cleaned, quality_assessment)
@@ -2012,11 +2080,22 @@ class SellerFlowService:
                     draft_message=cleaned,
                     quality_assessment=quality_assessment,
                     capture_mode=capture_mode,
+                    draft_image_url=self._listing_image_url(
+                        session=None,
+                        image_url=image_url,
+                        image_bytes=image_bytes,
+                        image_mime_type=image_mime_type,
+                    ),
                 )
             return self._create_listing(
                 profile=profile,
                 message_text=cleaned,
-                image_url=image_url,
+                image_url=self._listing_image_url(
+                    session=None,
+                    image_url=image_url,
+                    image_bytes=image_bytes,
+                    image_mime_type=image_mime_type,
+                ),
                 quality_assessment=quality_assessment,
                 image_bytes=image_bytes,
                 image_mime_type=image_mime_type,
@@ -2034,6 +2113,7 @@ class SellerFlowService:
                 draft_message=cleaned,
                 quality_assessment=quality_assessment,
                 capture_mode=capture_mode,
+                draft_image_url=image_url,
             )
         if not signals.get('quantity_kg'):
             return self._prompt_for_listing_slot(
@@ -2042,6 +2122,7 @@ class SellerFlowService:
                 draft_message=cleaned,
                 quality_assessment=quality_assessment,
                 capture_mode=capture_mode,
+                draft_image_url=image_url,
             )
         return self._prompt_for_listing_slot(
             profile=profile,
@@ -2049,6 +2130,7 @@ class SellerFlowService:
             draft_message=cleaned,
             quality_assessment=quality_assessment,
             capture_mode=capture_mode,
+            draft_image_url=image_url,
         )
 
     def _prompt_for_listing_slot(
@@ -2059,6 +2141,7 @@ class SellerFlowService:
         draft_message: str,
         quality_assessment: ProduceQualityAssessment | None,
         capture_mode: LedgerCaptureMode,
+        draft_image_url: str | None = None,
     ) -> dict[str, Any]:
         self._save_session(
             profile.seller_id,
@@ -2066,6 +2149,7 @@ class SellerFlowService:
             draft_message=draft_message,
             quality_assessment=quality_assessment,
             draft_capture_mode=capture_mode,
+            draft_image_url=draft_image_url,
         )
         signals = self._listing_signals(draft_message)
         product_name = signals.get('product_name') or 'this product'
@@ -2087,6 +2171,7 @@ class SellerFlowService:
         draft_message: str,
         quality_assessment: ProduceQualityAssessment | None,
         capture_mode: LedgerCaptureMode,
+        draft_image_url: str | None = None,
     ) -> dict[str, Any]:
         cleaned = draft_message.strip()
         self._save_session(
@@ -2095,6 +2180,7 @@ class SellerFlowService:
             draft_message=cleaned,
             quality_assessment=quality_assessment,
             draft_capture_mode=capture_mode,
+            draft_image_url=draft_image_url,
         )
         body = self._format_listing_confirmation_body(profile, cleaned)
         result = self.whatsapp.send_reply_buttons(
@@ -2145,7 +2231,7 @@ class SellerFlowService:
             return self._create_listing(
                 profile=profile,
                 message_text=draft_message,
-                image_url=None,
+                image_url=str(session.draft_image_url) if session.draft_image_url else None,
                 quality_assessment=self._session_quality_assessment(session),
                 image_bytes=None,
                 image_mime_type=None,
@@ -2158,6 +2244,7 @@ class SellerFlowService:
                 draft_message=session.draft_message,
                 quality_assessment=self._session_quality_assessment(session),
                 draft_capture_mode=session.draft_capture_mode or 'voice_note',
+                draft_image_url=str(session.draft_image_url) if session.draft_image_url else None,
             )
             return self._send_text(
                 profile,
@@ -2173,6 +2260,7 @@ class SellerFlowService:
                 draft_message=corrected_text,
                 quality_assessment=self._session_quality_assessment(session),
                 capture_mode=session.draft_capture_mode or 'voice_note',
+                draft_image_url=str(session.draft_image_url) if session.draft_image_url else None,
             )
 
         return self._prompt_for_listing_confirmation(
@@ -2180,6 +2268,7 @@ class SellerFlowService:
             draft_message=session.draft_message or '',
             quality_assessment=self._session_quality_assessment(session),
             capture_mode=session.draft_capture_mode or 'voice_note',
+            draft_image_url=str(session.draft_image_url) if session.draft_image_url else None,
         )
 
     def _merge_listing_correction(self, draft_message: str, correction_text: str) -> str:

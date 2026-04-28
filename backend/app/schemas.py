@@ -283,6 +283,7 @@ class SellerSession(BaseModel):
     draft_detected_product_name: str | None = None
     draft_detected_category: ProductCategory | None = None
     draft_estimated_visible_count: int | None = Field(default=None, ge=0)
+    draft_image_url: HttpUrl | None = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -318,6 +319,12 @@ class SellerLedgerView(BaseModel):
     seller_id: str
     summary: LedgerSummary
     items: list[LedgerEntry] = Field(default_factory=list)
+
+
+class LedgerPaymentCreate(BaseModel):
+    buyer_name: str = Field(min_length=1, max_length=120)
+    amount_paid: float = Field(gt=0)
+    notes: str | None = Field(default=None, max_length=300)
 
 
 class SellerDashboard(BaseModel):

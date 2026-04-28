@@ -1,13 +1,67 @@
 import { useEffect, useState } from 'react';
 import { requestLoginOtp, verifyLoginOtp } from '../api';
+import type { AppLanguage } from '../App';
 import type { AuthRole, AuthSession } from '../types';
 
+const authCopy = {
+  en: {
+    eyebrow: 'Role login',
+    title: 'Login to BolBazaar',
+    otpTitle: 'Enter the OTP',
+    close: 'Close',
+    buyer: 'Buyer',
+    buyerBody: 'Marketplace view with live listings, filters, and order booking.',
+    seller: 'Seller',
+    sellerBody: 'Seller cockpit with khata, pending orders, listings, and WhatsApp-linked stats.',
+    phone: 'Phone number',
+    phonePlaceholder: 'Enter the number you use for BolBazaar',
+    otp: 'OTP',
+    otpPlaceholder: 'Enter the 6-digit code',
+    demoOtp: 'Demo OTP',
+    changeNumber: 'Change number',
+    chooseRole: 'Choose buyer or seller first.',
+    sendOtp: 'Send OTP',
+    sending: 'Sending...',
+    verify: 'Verify and continue',
+    verifying: 'Verifying...',
+    sendError: 'Failed to send OTP',
+    verifyError: 'Failed to verify OTP',
+  },
+  hi: {
+    eyebrow: 'रोल लॉगिन',
+    title: 'BolBazaar में लॉगिन करें',
+    otpTitle: 'OTP दर्ज करें',
+    close: 'बंद करें',
+    buyer: 'खरीदार',
+    buyerBody: 'लाइव लिस्टिंग, फिल्टर और ऑर्डर बुकिंग वाला मार्केटप्लेस व्यू।',
+    seller: 'विक्रेता',
+    sellerBody: 'खाता, पेंडिंग ऑर्डर, लिस्टिंग और WhatsApp-linked stats वाला seller cockpit.',
+    phone: 'फोन नंबर',
+    phonePlaceholder: 'BolBazaar के लिए इस्तेमाल किया गया नंबर दर्ज करें',
+    otp: 'OTP',
+    otpPlaceholder: '6 अंकों का कोड दर्ज करें',
+    demoOtp: 'Demo OTP',
+    changeNumber: 'नंबर बदलें',
+    chooseRole: 'पहले buyer या seller चुनें।',
+    sendOtp: 'OTP भेजें',
+    sending: 'भेजा जा रहा है...',
+    verify: 'Verify करके आगे बढ़ें',
+    verifying: 'Verify हो रहा है...',
+    sendError: 'OTP भेजने में समस्या हुई',
+    verifyError: 'OTP verify करने में समस्या हुई',
+  },
+};
+
 export default function AuthModal({
+  language,
+  onLanguageChange,
   isOpen,
   initialRole,
   onClose,
   onSuccess,
 }: {
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
   isOpen: boolean;
   initialRole: AuthRole | null;
   onClose: () => void;
@@ -43,16 +97,36 @@ export default function AuthModal({
   }
 
   const otpStep = requestId !== null;
+  const copy = authCopy[language];
 
   return (
     <div className="modal-backdrop auth-backdrop">
       <div className="modal card auth-modal">
+        <div className="modal-language-row">
+          <span className="label">Language</span>
+          <div className="language-switcher" aria-label="Language switcher">
+            <button
+              type="button"
+              className={language === 'en' ? 'language-switch-active' : ''}
+              onClick={() => onLanguageChange('en')}
+            >
+              English
+            </button>
+            <button
+              type="button"
+              className={language === 'hi' ? 'language-switch-active' : ''}
+              onClick={() => onLanguageChange('hi')}
+            >
+              हिंदी
+            </button>
+          </div>
+        </div>
         <div className="modal-header">
           <div>
-            <span className="eyebrow">Role login</span>
-            <h3>{otpStep ? 'Enter the OTP' : 'Login to BolBazaar'}</h3>
+            <span className="eyebrow">{copy.eyebrow}</span>
+            <h3>{otpStep ? copy.otpTitle : copy.title}</h3>
           </div>
-          <button className="ghost-button" onClick={onClose}>Close</button>
+          <button className="ghost-button" onClick={onClose}>{copy.close}</button>
         </div>
 
         {!otpStep && (
@@ -61,15 +135,15 @@ export default function AuthModal({
               className={`role-card ${role === 'buyer' ? 'role-card-active' : ''}`}
               onClick={() => setRole('buyer')}
             >
-              <strong>Buyer</strong>
-              <span>Marketplace view with live listings, filters, and order booking.</span>
+              <strong>{copy.buyer}</strong>
+              <span>{copy.buyerBody}</span>
             </button>
             <button
               className={`role-card ${role === 'seller' ? 'role-card-active' : ''}`}
               onClick={() => setRole('seller')}
             >
-              <strong>Seller</strong>
-              <span>Seller cockpit with khata, pending orders, listings, and WhatsApp-linked stats.</span>
+              <strong>{copy.seller}</strong>
+              <span>{copy.sellerBody}</span>
             </button>
           </div>
         )}
@@ -77,22 +151,22 @@ export default function AuthModal({
         <div className="auth-form-grid">
           {!otpStep && (
             <div>
-              <label className="label">Phone number</label>
+              <label className="label">{copy.phone}</label>
               <input
                 value={phoneNumber}
                 onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="Enter the number you use for BolBazaar"
+                placeholder={copy.phonePlaceholder}
               />
             </div>
           )}
 
           {otpStep && (
             <div>
-              <label className="label">OTP</label>
+              <label className="label">{copy.otp}</label>
               <input
                 value={otpCode}
                 onChange={(event) => setOtpCode(event.target.value)}
-                placeholder="Enter the 6-digit code"
+                placeholder={copy.otpPlaceholder}
               />
             </div>
           )}
@@ -101,7 +175,7 @@ export default function AuthModal({
         {requestNote && <div className="notice-banner">{requestNote}</div>}
         {demoOtp && (
           <div className="otp-preview">
-            <span className="label">Demo OTP</span>
+            <span className="label">{copy.demoOtp}</span>
             <strong>{demoOtp}</strong>
           </div>
         )}
@@ -119,7 +193,7 @@ export default function AuthModal({
                 setError(null);
               }}
             >
-              Change number
+              {copy.changeNumber}
             </button>
           )}
           {!otpStep ? (
@@ -128,7 +202,7 @@ export default function AuthModal({
               disabled={sending || !role || phoneNumber.trim().length < 10}
               onClick={async () => {
                 if (!role) {
-                  setError('Choose buyer or seller first.');
+                  setError(copy.chooseRole);
                   return;
                 }
                 setSending(true);
@@ -142,13 +216,13 @@ export default function AuthModal({
                   setRequestNote(response.note || null);
                   setDemoOtp(response.demo_otp || null);
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed to send OTP');
+                  setError(err instanceof Error ? err.message : copy.sendError);
                 } finally {
                   setSending(false);
                 }
               }}
             >
-              {sending ? 'Sending...' : 'Send OTP'}
+              {sending ? copy.sending : copy.sendOtp}
             </button>
           ) : (
             <button
@@ -167,13 +241,13 @@ export default function AuthModal({
                   });
                   onSuccess(response.session);
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : 'Failed to verify OTP');
+                  setError(err instanceof Error ? err.message : copy.verifyError);
                 } finally {
                   setVerifying(false);
                 }
               }}
             >
-              {verifying ? 'Verifying...' : 'Verify and continue'}
+              {verifying ? copy.verifying : copy.verify}
             </button>
           )}
         </div>

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.config import get_settings
@@ -16,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix=settings.api_v1_prefix)
+app.mount('/media', StaticFiles(directory=settings.media_dir), name='media')
 
 
 @app.get("/")

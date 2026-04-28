@@ -9,6 +9,7 @@ import {
   fetchSellerLedger,
   fetchSellers,
   placeOrder,
+  recordLedgerPayment,
   reportBuyerDemandSearch,
   resetDemo,
   respondToOrder,
@@ -22,6 +23,17 @@ import type { AuthRole, AuthSession, Insight, Listing, Notification, Order, Sell
 
 const BUYER_SESSION_STORAGE_KEY = 'bolbazaar_buyer_session_id';
 const APP_SESSION_STORAGE_KEY = 'bolbazaar_web_session';
+const APP_LANGUAGE_STORAGE_KEY = 'bolbazaar_language';
+
+export type AppLanguage = 'en' | 'hi';
+
+function getStoredLanguage(): AppLanguage {
+  if (typeof window === 'undefined') {
+    return 'en';
+  }
+
+  return window.localStorage.getItem(APP_LANGUAGE_STORAGE_KEY) === 'hi' ? 'hi' : 'en';
+}
 
 function getOrCreateBuyerSessionId(): string {
   const fallback = `buyer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -85,6 +97,7 @@ export default function App() {
   const [session, setSession] = useState<AuthSession | null>(getStoredSession);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authInitialRole, setAuthInitialRole] = useState<AuthRole | null>(null);
+  const [language, setLanguage] = useState<AppLanguage>(getStoredLanguage);
   const buyerSessionIdRef = useRef<string>(getOrCreateBuyerSessionId());
 
   const activeSellerId = sessionSellerId(session) || selectedSellerId;
@@ -158,6 +171,14 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(APP_LANGUAGE_STORAGE_KEY, language);
+  }, [language]);
+
+  useEffect(() => {
     const sellerId = sessionSellerId(session);
     if (sellerId) {
       setSelectedSellerId(sellerId);
@@ -215,6 +236,22 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-actions">
+            <div className="language-switcher" aria-label="Language switcher">
+              <button
+                type="button"
+                className={language === 'en' ? 'language-switch-active' : ''}
+                onClick={() => setLanguage('en')}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                className={language === 'hi' ? 'language-switch-active' : ''}
+                onClick={() => setLanguage('hi')}
+              >
+                HI
+              </button>
+            </div>
             <span className="session-chip">{session?.role === 'seller' ? 'Seller logged in' : 'Buyer logged in'}</span>
             <button className="ghost-button" onClick={() => setSession(null)}>Logout</button>
           </div>
@@ -229,6 +266,8 @@ export default function App() {
 
       {!session && (
         <LandingPage
+          language={language}
+          onLanguageChange={setLanguage}
           stats={{
             liveListings: listings.length,
             activeSellers: sellers.length,
@@ -244,6 +283,8 @@ export default function App() {
 
       {session?.role === 'buyer' && (
         <BuyerWorkspace
+          language={language}
+          onLanguageChange={setLanguage}
           session={session}
           listings={filteredListings}
           sellers={sellers}
@@ -275,6 +316,8 @@ export default function App() {
 
       {session?.role === 'seller' && (
         <SellerWorkspace
+          language={language}
+          onLanguageChange={setLanguage}
           session={session}
           seller={currentSeller}
           dashboard={dashboard}
@@ -286,6 +329,13 @@ export default function App() {
           onRefresh={() => void loadAll(activeSellerId)}
           onRespondOrder={async (orderId, decision) => {
             await respondToOrder(orderId, decision);
+            await loadAll(activeSellerId);
+          }}
+          onRecordLedgerPayment={async (payload) => {
+            if (!activeSellerId) {
+              throw new Error('Seller session not available');
+            }
+            await recordLedgerPayment({ seller_id: activeSellerId, ...payload });
             await loadAll(activeSellerId);
           }}
         />
@@ -306,6 +356,8 @@ export default function App() {
       )}
 
       <AuthModal
+        language={language}
+        onLanguageChange={setLanguage}
         isOpen={authModalOpen}
         initialRole={authInitialRole}
         onClose={() => setAuthModalOpen(false)}

@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 from app.dependencies import get_auth_service, get_marketplace, get_store
 from datetime import datetime
 
-from app.schemas import BuyerDemandSearchIn, BuyerDemandSearchResponse, DemoSeedResponse, ListingResponse, OrderCreate, OrderDecisionIn, OtpRequestIn, OtpRequestResponse, OtpVerifyIn, OtpVerifyResponse, SellerLedgerView, SellerMessageIn, SellerProfile
+from app.schemas import BuyerDemandSearchIn, BuyerDemandSearchResponse, DemoSeedResponse, LedgerPaymentCreate, ListingResponse, OrderCreate, OrderDecisionIn, OtpRequestIn, OtpRequestResponse, OtpVerifyIn, OtpVerifyResponse, SellerLedgerView, SellerMessageIn, SellerProfile
 from app.services.auth_service import AuthService
 from app.services.marketplace import MarketplaceService
 from app.services.seller_flow import SellerFlowService
@@ -171,6 +171,20 @@ def get_seller_ledger(seller_id: str, marketplace: MarketplaceService = Depends(
     if ledger is None:
         raise HTTPException(status_code=404, detail='Seller ledger not found')
     return ledger
+
+
+@router.post('/sellers/{seller_id}/ledger/payments')
+def create_seller_ledger_payment(
+    seller_id: str,
+    payload: LedgerPaymentCreate,
+    marketplace: MarketplaceService = Depends(get_marketplace),
+) -> dict:
+    try:
+        entry = marketplace.record_ledger_payment(seller_id=seller_id, payload=payload)
+        ledger = marketplace.build_seller_ledger(seller_id)
+        return {'ok': True, 'entry': entry, 'ledger': ledger}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get('/sellers/{seller_id}/insight')

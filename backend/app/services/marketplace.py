@@ -7,7 +7,7 @@ import hashlib
 import httpx
 
 from app.config import get_settings
-from app.schemas import BuyerDemandEvent, BuyerDemandSearchIn, BuyerDemandSearchResponse, LedgerCaptureMode, LedgerEntry, LedgerSummary, Listing, ListingCreate, Order, OrderCreate, ProduceQualityAssessment, SellerLedgerView, SellerNotification, SourceChannel
+from app.schemas import BuyerDemandEvent, BuyerDemandSearchIn, BuyerDemandSearchResponse, LedgerCaptureMode, LedgerEntry, LedgerPaymentCreate, LedgerSummary, Listing, ListingCreate, Order, OrderCreate, ProduceQualityAssessment, SellerLedgerView, SellerNotification, SourceChannel
 from app.schemas import SellerDashboard, SellerProfile
 from app.services.extraction import ExtractionService
 from app.services.geo_service import GeoService
@@ -29,6 +29,40 @@ class MarketplaceService:
         if image_url and image_url.startswith(('http://', 'https://')):
             return image_url
         return None
+
+    def listing_image_url(
+        self,
+        image_url: str | None,
+        image_bytes: bytes | None = None,
+        image_mime_type: str | None = None,
+    ) -> str | None:
+        return self._public_image_url(image_url) or self._persist_listing_image(image_bytes, image_mime_type)
+
+    def _persist_listing_image(self, image_bytes: bytes | None, image_mime_type: str | None) -> str | None:
+        if not image_bytes or not image_mime_type:
+            return None
+
+        extension_by_mime = {
+            'image/jpeg': 'jpg',
+            'image/jpg': 'jpg',
+            'image/png': 'png',
+            'image/webp': 'webp',
+            'image/gif': 'gif',
+        }
+        content_type = image_mime_type.split(';', 1)[0].strip().lower()
+        extension = extension_by_mime.get(content_type)
+        if extension is None:
+            return None
+
+        media_dir = self.settings.media_dir / 'listings'
+        media_dir.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(image_bytes).hexdigest()[:24]
+        filename = f'{digest}.{extension}'
+        target = media_dir / filename
+        if not target.exists():
+            target.write_bytes(image_bytes)
+
+        return f'{self.settings.api_public_base_url.rstrip("/")}/media/listings/{filename}'
 
     def _fetch_public_image_bytes(self, image_url: str | None) -> tuple[bytes | None, str | None]:
         public_image_url = self._public_image_url(image_url)
@@ -76,7 +110,7 @@ class MarketplaceService:
         image_mime_type: str | None = None,
         quality_assessment: ProduceQualityAssessment | None = None,
     ) -> Listing:
-        public_image_url = self._public_image_url(image_url)
+        public_image_url = self.listing_image_url(image_url, image_bytes, image_mime_type)
         effective_quality_assessment = quality_assessment or self.assess_produce_image(
             image_bytes=image_bytes,
             image_mime_type=image_mime_type,
@@ -183,6 +217,71 @@ class MarketplaceService:
         if seller_id is not None:
             entries = [entry for entry in entries if entry.seller_id == seller_id]
         return sorted(entries, key=lambda item: item.created_at, reverse=True)
+
+    def _normalize_product_name(self, product_name: str | None) -> str:
+        return ' '.join((product_name or '').strip().lower().split())
+
+    def _format_amount(self, value: float | None) -> str:
+        return f'{value:g}' if value is not None else '0'
+
+    def _build_sale_entry_summary(self, entry: LedgerEntry, total_amount: float, amount_due: float) -> str:
+        details: list[str] = []
+        if entry.product_name and entry.quantity_kg is not None:
+            details.append(f'bought {self._format_amount(entry.quantity_kg)} kg {entry.product_name}')
+        elif entry.product_name:
+            details.append(f'bought {entry.product_name}')
+        else:
+            details.append('made a purchase')
+        details.append(f'Total Rs {self._format_amount(total_amount)}')
+        if entry.amount_paid > 0:
+            details.append(f'paid Rs {self._format_amount(entry.amount_paid)}')
+        if amount_due > 0:
+            details.append(f'due Rs {self._format_amount(amount_due)}')
+        return f'{entry.buyer_name} {", ".join(details)}.'
+
+    def _resolve_ledger_entries(self, seller_id: str) -> list[LedgerEntry]:
+        entries = self.list_ledger_entries(seller_id)
+        latest_listing_by_product: dict[str, Listing] = {}
+        for listing in self.store.list_listings():
+            if listing.seller_id != seller_id:
+                continue
+            product_key = self._normalize_product_name(listing.product_name)
+            if not product_key:
+                continue
+            current = latest_listing_by_product.get(product_key)
+            if current is None or listing.created_at > current.created_at:
+                latest_listing_by_product[product_key] = listing
+
+        resolved_entries: list[LedgerEntry] = []
+        for entry in entries:
+            if entry.entry_kind != 'sale' or entry.quantity_kg is None:
+                resolved_entries.append(entry)
+                continue
+
+            product_key = self._normalize_product_name(entry.product_name)
+            listing = latest_listing_by_product.get(product_key)
+            if listing is None:
+                resolved_entries.append(entry)
+                continue
+
+            recomputed_total = round(entry.quantity_kg * listing.price_per_kg, 2)
+            normalized_total = max(recomputed_total, round(entry.amount_paid, 2))
+            normalized_due = max(round(normalized_total - entry.amount_paid, 2), 0.0)
+            if (
+                entry.total_amount == normalized_total
+                and entry.amount_due == normalized_due
+                and entry.balance_delta == normalized_due
+            ):
+                resolved_entries.append(entry)
+                continue
+
+            resolved_entries.append(entry.model_copy(update={
+                'total_amount': normalized_total,
+                'amount_due': normalized_due,
+                'balance_delta': normalized_due,
+                'summary': self._build_sale_entry_summary(entry, normalized_total, normalized_due),
+            }))
+        return resolved_entries
 
     def _normalize_search_query(self, query: str) -> str:
         normalized = ' '.join(query.strip().lower().split())
@@ -341,7 +440,7 @@ class MarketplaceService:
         )
 
     def _build_ledger_summary(self, seller_id: str) -> LedgerSummary:
-        entries = self.list_ledger_entries(seller_id)
+        entries = self._resolve_ledger_entries(seller_id)
         buyer_balances: dict[str, float] = {}
         for entry in entries:
             buyer_balances[entry.buyer_name] = round(buyer_balances.get(entry.buyer_name, 0.0) + entry.balance_delta, 2)
@@ -359,7 +458,7 @@ class MarketplaceService:
         if profile is None:
             return None
 
-        entries = self.list_ledger_entries(seller_id)
+        entries = self._resolve_ledger_entries(seller_id)
         return SellerLedgerView(
             seller_id=seller_id,
             summary=self._build_ledger_summary(seller_id),
@@ -386,6 +485,44 @@ class MarketplaceService:
         save_entry = getattr(self.store, 'save_ledger_entry', None)
         if save_entry is None:
             return None
+        return save_entry(entry)
+
+    def record_ledger_payment(
+        self,
+        *,
+        seller_id: str,
+        payload: LedgerPaymentCreate,
+        source_channel: SourceChannel = 'api',
+    ) -> LedgerEntry:
+        profile = self.store.get_seller_profile(seller_id)
+        if profile is None:
+            raise ValueError('Seller not found')
+
+        buyer_name = payload.buyer_name.strip()
+        amount_paid = round(payload.amount_paid, 2)
+        note = (payload.notes or '').strip() or None
+        summary = f'{buyer_name} paid Rs {amount_paid:g} toward the khata balance.'
+        if note:
+            summary = f'{summary} {note}'
+
+        entry = LedgerEntry(
+            seller_id=seller_id,
+            buyer_name=buyer_name,
+            entry_kind='payment',
+            amount_paid=amount_paid,
+            amount_due=0,
+            balance_delta=-amount_paid,
+            summary=summary,
+            notes=note,
+            source_channel=source_channel,
+            capture_mode='text_message',
+            parse_source='rule_based',
+            raw_message=summary,
+        )
+
+        save_entry = getattr(self.store, 'save_ledger_entry', None)
+        if save_entry is None:
+            raise ValueError('Ledger storage unavailable')
         return save_entry(entry)
 
     def build_seller_dashboard(self, seller_id: str) -> SellerDashboard | None:

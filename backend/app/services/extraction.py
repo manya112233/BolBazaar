@@ -103,6 +103,8 @@ LEDGER_NAME_STOPWORDS = {
     'aj',
     'yesterday',
     'kal',
+    'has',
+    'have',
     'customer',
     'buyer',
     'mera',

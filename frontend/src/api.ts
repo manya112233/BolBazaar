@@ -127,6 +127,23 @@ export async function fetchSellerLedger(sellerId: string): Promise<SellerLedgerV
   }
 }
 
+export async function recordLedgerPayment(payload: {
+  seller_id: string;
+  buyer_name: string;
+  amount_paid: number;
+  notes?: string;
+}): Promise<SellerLedgerView | null> {
+  const data = await request<{ ok: boolean; ledger: SellerLedgerView | null }>(`/api/sellers/${payload.seller_id}/ledger/payments`, {
+    method: 'POST',
+    body: JSON.stringify({
+      buyer_name: payload.buyer_name,
+      amount_paid: payload.amount_paid,
+      notes: payload.notes,
+    }),
+  });
+  return data.ledger;
+}
+
 export async function reportBuyerDemandSearch(payload: {
   buyer_id: string;
   search_query: string;

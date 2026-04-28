@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import type { AppLanguage } from '../App';
 
 type LandingStats = {
   liveListings: number;
@@ -7,20 +9,12 @@ type LandingStats = {
   alertsSent: number;
 };
 
-type ExperienceId = 'whatsapp' | 'buyer' | 'seller';
-type ArchitectureNodeId = 'intake' | 'speech' | 'intelligence' | 'marketplace' | 'auth' | 'buyer' | 'seller' | 'alerts';
-type WorkflowStageId = 'capture' | 'understand' | 'structure' | 'activate' | 'close';
-type PreviewLanguage = 'english' | 'hindi';
-type WorkflowCanvasNode = {
-  id: string;
-  tag: string;
-  title: string;
-  subtitle: string;
-  x: number;
-  y: number;
-  tone: 'mint' | 'rose' | 'amber' | 'sky' | 'violet' | 'teal';
-  stage?: WorkflowStageId;
+type Activity = {
+  label: string;
+  meta: string;
+  value: string;
 };
+
 type PreviewMessage = {
   side: 'left' | 'right';
   type: 'notice' | 'text' | 'choice' | 'voice' | 'card';
@@ -28,315 +22,108 @@ type PreviewMessage = {
   title?: string;
 };
 
-const problemCards = [
-  {
-    kicker: 'Discovery friction',
-    title: 'Supply is live, but visibility is broken.',
-    body: 'Fresh produce availability still moves through scattered WhatsApp chats, calls, and informal groups, so buyers cannot reliably discover what is actually available right now.',
-  },
-  {
-    kicker: 'Trust gap',
-    title: 'Sellers already work on WhatsApp.',
-    body: 'Any solution that forces a separate seller app creates drop-off. The working behavior is already on WhatsApp, so the product has to respect that instead of replacing it.',
-  },
-  {
-    kicker: 'Ops blind spot',
-    title: 'Khata, orders, and verification stay hidden in chat.',
-    body: 'Important operating signals live inside messages and voice notes. Without structure, there is no clean seller cockpit and no buyer-facing confidence layer.',
-  },
+const produceFlow = [
+  { name: 'Onion', share: 72, tone: 'green' },
+  { name: 'Tomato', share: 58, tone: 'orange' },
+  { name: 'Potato', share: 84, tone: 'blue' },
+  { name: 'Leafy greens', share: 46, tone: 'mint' },
 ];
 
-const experienceModes = [
-  {
-    id: 'whatsapp' as const,
-    label: 'WhatsApp seller flow',
-    eyebrow: 'Surface 01',
-    title: 'Keep the seller where the seller already is.',
-    description:
-      'BolBazaar does not force sellers into a new tool. Onboarding, listing creation, verification, voice notes, and khata updates continue inside WhatsApp so adoption stays realistic.',
-    metrics: [
-      { label: 'Primary input', value: 'Text, image, voice' },
-      { label: 'Key actions', value: 'List, khata, orders' },
-      { label: 'Why it matters', value: 'Zero behavior change' },
-    ],
-    bullets: [
-      'Seller login stays tied to the same phone number used in WhatsApp.',
-      'Voice notes and natural language can trigger menu actions in Hindi and English.',
-      'The seller menu remains aligned with the existing backend flow instead of becoming a separate product.',
-    ],
-    compliance:
-      'This is the compliance anchor: the dashboard mirrors WhatsApp activity, but seller operations still originate from the WhatsApp experience already in place.',
-  },
-  {
-    id: 'buyer' as const,
-    label: 'Buyer marketplace',
-    eyebrow: 'Surface 02',
-    title: 'Turn unstructured supply into a clean buying surface.',
-    description:
-      'Once seller messages become structured inventory, buyers get a modern marketplace to filter produce, compare pickup locations, and place orders with more confidence.',
-    metrics: [
-      { label: 'Buyer action', value: 'Search and compare' },
-      { label: 'Trust layer', value: 'Pickup + seller context' },
-      { label: 'Outcome', value: 'Faster ordering' },
-    ],
-    bullets: [
-      'Live listings, seller spotlight, and price filtering make the marketplace feel credible in a demo setting.',
-      'Buyers can see seller activity signals without needing access to seller-side tooling.',
-      'Demand searches can feed back into seller alerts and marketplace intelligence.',
-    ],
-    compliance:
-      'The buyer web layer is new, but the source of truth for supply still comes from WhatsApp-generated seller data.',
-  },
-  {
-    id: 'seller' as const,
-    label: 'Seller control tower',
-    eyebrow: 'Surface 03',
-    title: 'Give sellers visibility without changing their channel.',
-    description:
-      'The seller interface becomes a control tower for stats, ongoing orders, khata, verification state, and recent listings while still reflecting the WhatsApp-first operating model.',
-    metrics: [
-      { label: 'Ops view', value: 'Stats + khata + alerts' },
-      { label: 'Decision point', value: 'Accept or reject orders' },
-      { label: 'Pitch value', value: 'Judge-ready dashboard' },
-    ],
-    bullets: [
-      'Dashboard metrics make the solution feel like a real operating product rather than a chat demo.',
-      'Khata entries from voice or text become visible, reviewable records.',
-      'Seller verification, recent listings, and notifications are visible in one place for the hackathon story.',
-    ],
-    compliance:
-      'The seller dashboard is a mirror and control layer, not a replacement for WhatsApp onboarding, listing capture, or ledger notes.',
-  },
+const activityStream: Activity[] = [
+  { label: 'New order accepted', meta: 'Azadpur pickup', value: '2m ago' },
+  { label: 'Seller inventory synced', meta: 'Fresh tomato lot', value: '8m ago' },
+  { label: 'Buyer demand matched', meta: 'Onion under Rs 24/kg', value: '12m ago' },
+  { label: 'Ledger note recorded', meta: 'Khata update captured', value: '18m ago' },
 ];
 
-const architectureNodes = [
-  {
-    id: 'intake' as const,
-    title: 'WhatsApp Intake',
-    tag: 'Entry point',
-    subtitle: 'Messages, images, voice notes',
-    body: 'Inbound seller activity lands through the WhatsApp webhook, preserving the original operating channel instead of bypassing it.',
-    points: ['Seller onboarding', 'Menu navigation', 'Listing capture'],
-  },
-  {
-    id: 'speech' as const,
-    title: 'Speech Layer',
-    tag: 'Language bridge',
-    subtitle: 'Voice to command and ledger intent',
-    body: 'Voice notes are transcribed with Hindi and English hints so natural spoken commands like khata, menu, or orders can be understood.',
-    points: ['Hindi + English transcription', 'Voice-note menu control', 'Khata intent support'],
-  },
-  {
-    id: 'intelligence' as const,
-    title: 'AI Structuring',
-    tag: 'Intelligence',
-    subtitle: 'Listings, quality, ledger parsing',
-    body: 'Unstructured messages are turned into clean product records, pickup context, quality signals, and ledger updates that the web layers can trust.',
-    points: ['Listing extraction', 'Quality signals', 'Ledger parsing'],
-  },
-  {
-    id: 'marketplace' as const,
-    title: 'Marketplace Core',
-    tag: 'System of record',
-    subtitle: 'Orders, sellers, listings, insights',
-    body: 'The core service stores listings, dashboards, orders, notifications, and insights so both the buyer and seller interfaces stay synchronized.',
-    points: ['Shared data model', 'Order orchestration', 'Seller insights'],
-  },
-  {
-    id: 'auth' as const,
-    title: 'Role Login + OTP',
-    tag: 'Access layer',
-    subtitle: 'Buyer vs seller interface split',
-    body: 'Role-based login lets the same frontend open different surfaces while seller identity stays attached to the WhatsApp number.',
-    points: ['Buyer login', 'Seller login', 'Phone-number identity'],
-  },
-  {
-    id: 'buyer' as const,
-    title: 'Buyer Interface',
-    tag: 'Web surface',
-    subtitle: 'Search, compare, order',
-    body: 'Buyers get a marketplace-first experience with searchable listings, seller context, and a clearer ordering flow.',
-    points: ['Live listings', 'Filters', 'Order placement'],
-  },
-  {
-    id: 'seller' as const,
-    title: 'Seller Interface',
-    tag: 'Web surface',
-    subtitle: 'Stats, khata, listings, profile',
-    body: 'Sellers get a dashboard that surfaces ongoing orders, outstanding khata, recent listings, alerts, and verification status.',
-    points: ['KPI dashboard', 'Khata review', 'Order response'],
-  },
-  {
-    id: 'alerts' as const,
-    title: 'Notification Loop',
-    tag: 'Closing the loop',
-    subtitle: 'Alerts and buyer demand signals',
-    body: 'The system can turn activity into seller-facing alerts and buyer-demand signals, making the platform feel operational rather than static.',
-    points: ['Order alerts', 'Demand insight', 'Operational feedback'],
-  },
+const trustSignals = [
+  'Phone-linked seller access',
+  'Live listing freshness',
+  'Order and ledger visibility',
+  'Buyer demand intelligence',
 ];
 
-const proofPills = [
-  'No separate seller app required',
-  'Hindi and English friendly',
-  'Voice + text + image inputs',
-  'Buyer and seller web split',
-];
+const landingCopy = {
+  en: {
+    brand: 'Fresh produce operating dashboard',
+    navProblem: 'Problem',
+    navSolution: 'Solution',
+    navHow: 'How It Works',
+    navDashboard: 'Dashboard',
+    login: 'Login',
+    open: 'Open dashboard',
+    badge: 'Live commerce command center',
+    title: 'BolBazaar keeps produce trade moving in real time.',
+    lead: 'BolBazaar connects WhatsApp-first sellers with buyers through live inventory, order tracking, khata visibility, and a clean SaaS dashboard for daily market operations.',
+    buyerCta: 'Explore marketplace',
+    sellerCta: 'View seller dashboard',
+    problemEyebrow: 'Problem',
+    problemTitle: 'Local produce trade is active, but the operating data is scattered.',
+    problemBody: 'Sellers share inventory in chats, buyers negotiate across calls, and khata records stay informal. BolBazaar turns that activity into a shared operating system.',
+    solutionEyebrow: 'Solution',
+    solutionTitle: 'One WhatsApp-friendly workflow, two polished product surfaces.',
+    solutionBody: 'Sellers keep using familiar chat behavior, while buyers and sellers get structured dashboards for search, order movement, ledger visibility, and alerts.',
+    howEyebrow: 'How It Works',
+    howTitle: 'A seller message becomes marketplace inventory and dashboard intelligence.',
+    howBody: 'The phone preview shows the familiar chat flow. The dashboard beside it shows how the same signals become live listings, demand alerts, and operational metrics.',
+    phoneTitle: 'WhatsApp seller preview',
+    phoneSubtitle: 'Scrollable English and Hindi chat',
+    dashboardTitle: 'Marketplace Overview',
+    sync: 'Sync account',
+    operationsTitle: 'A SaaS cockpit for sellers, buyers, orders, and khata.',
+    operationsBody: 'BolBazaar brings the daily moving parts of produce commerce into dashboards that are easier to scan, refresh, and act on.',
+  },
+  hi: {
+    brand: 'Fresh produce operating dashboard',
+    navProblem: 'Problem',
+    navSolution: 'Solution',
+    navHow: 'How It Works',
+    navDashboard: 'Dashboard',
+    login: 'Login',
+    open: 'Dashboard खोलें',
+    badge: 'Live commerce command center',
+    title: 'BolBazaar produce trade को real time में चलाता है.',
+    lead: 'BolBazaar WhatsApp-first sellers को buyers से जोड़ता है, जिसमें live inventory, order tracking, khata visibility और daily market operations के लिए clean SaaS dashboard मिलता है.',
+    buyerCta: 'Marketplace देखें',
+    sellerCta: 'Seller dashboard देखें',
+    problemEyebrow: 'Problem',
+    problemTitle: 'Local produce trade active है, लेकिन operating data scattered रहता है.',
+    problemBody: 'Sellers chats में inventory भेजते हैं, buyers calls पर negotiate करते हैं, और khata informal रहता है. BolBazaar इस activity को shared operating system में बदलता है.',
+    solutionEyebrow: 'Solution',
+    solutionTitle: 'एक WhatsApp-friendly workflow, और दो polished product surfaces.',
+    solutionBody: 'Sellers familiar chat behavior रख सकते हैं, जबकि buyers और sellers को search, order movement, ledger visibility और alerts के लिए structured dashboards मिलते हैं.',
+    howEyebrow: 'How It Works',
+    howTitle: 'Seller message marketplace inventory और dashboard intelligence बनता है.',
+    howBody: 'Phone preview familiar chat flow दिखाता है. साथ वाला dashboard दिखाता है कि वही signals live listings, demand alerts और operational metrics कैसे बनते हैं.',
+    phoneTitle: 'WhatsApp seller preview',
+    phoneSubtitle: 'Scrollable English और Hindi chat',
+    dashboardTitle: 'Marketplace Overview',
+    sync: 'Account sync करें',
+    operationsTitle: 'Sellers, buyers, orders और khata के लिए SaaS cockpit.',
+    operationsBody: 'BolBazaar produce commerce के daily moving parts को ऐसे dashboards में लाता है जिन्हें scan, refresh और act करना आसान है.',
+  },
+};
 
-const workflowStages = [
-  {
-    id: 'capture' as const,
-    icon: 'WA',
-    title: 'Seller on WhatsApp',
-    subtitle: 'Text, image, or voice note',
-    body: 'The seller stays in WhatsApp for onboarding, listings, menu commands, and khata notes. That is the behavioral starting point of the product.',
-  },
-  {
-    id: 'understand' as const,
-    icon: 'AI',
-    title: 'Speech + command understanding',
-    subtitle: 'Hindi and English aware',
-    body: 'Voice notes and natural messages are recognized as real intents such as khata, menu, dashboard, or listing capture, instead of being treated as raw chat noise.',
-  },
-  {
-    id: 'structure' as const,
-    icon: 'DB',
-    title: 'Structured marketplace layer',
-    subtitle: 'Listings, pickup, ledger, verification',
-    body: 'The backend turns conversation into structured records so the product can show reliable listings, seller state, and ledger activity.',
-  },
-  {
-    id: 'activate' as const,
-    icon: 'UX',
-    title: 'Role-based product surfaces',
-    subtitle: 'Buyer web + seller dashboard',
-    body: 'Buyers and sellers see different interfaces after OTP login, but both are powered by the same WhatsApp-origin data model.',
-  },
-  {
-    id: 'close' as const,
-    icon: 'LOOP',
-    title: 'Orders and alerts loop back',
-    subtitle: 'Control layer, not a channel split',
-    body: 'Orders, alerts, and khata updates stay connected to the WhatsApp workflow so the demo remains compliant with the original seller operating pattern.',
-  },
-];
-
-const workflowCanvasNodes: WorkflowCanvasNode[] = [
-  {
-    id: 'seller_whatsapp',
-    tag: 'WA',
-    title: 'Seller',
-    subtitle: 'WhatsApp',
-    x: 14,
-    y: 18,
-    tone: 'mint',
-    stage: 'capture',
-  },
-  {
-    id: 'voice_intent',
-    tag: 'AI',
-    title: 'Voice + Text',
-    subtitle: 'Hindi / English',
-    x: 37,
-    y: 18,
-    tone: 'rose',
-    stage: 'understand',
-  },
-  {
-    id: 'marketplace_core',
-    tag: 'CORE',
-    title: 'Marketplace Core',
-    subtitle: 'Listings + khata + trust',
-    x: 61,
-    y: 18,
-    tone: 'amber',
-    stage: 'structure',
-  },
-  {
-    id: 'web_surfaces',
-    tag: 'WEB',
-    title: 'Web Surfaces',
-    subtitle: 'Buyer + seller',
-    x: 84,
-    y: 18,
-    tone: 'sky',
-    stage: 'activate',
-  },
-  {
-    id: 'otp_login',
-    tag: 'OTP',
-    title: 'OTP Login',
-    subtitle: 'Role split',
-    x: 20,
-    y: 72,
-    tone: 'violet',
-  },
-  {
-    id: 'alerts_loop',
-    tag: 'LOOP',
-    title: 'Demand + Alerts',
-    subtitle: 'Loopback signals',
-    x: 44,
-    y: 72,
-    tone: 'teal',
-    stage: 'close',
-  },
-  {
-    id: 'buyer_view',
-    tag: 'BUYER',
-    title: 'Buyer View',
-    subtitle: 'Search + order',
-    x: 68,
-    y: 72,
-    tone: 'mint',
-    stage: 'activate',
-  },
-  {
-    id: 'seller_view',
-    tag: 'SELLER',
-    title: 'Seller View',
-    subtitle: 'Stats + khata',
-    x: 84,
-    y: 72,
-    tone: 'sky',
-    stage: 'activate',
-  },
-];
-
-const workflowCanvasConnections = [
-  ['seller_whatsapp', 'voice_intent'],
-  ['voice_intent', 'marketplace_core'],
-  ['marketplace_core', 'web_surfaces'],
-  ['marketplace_core', 'alerts_loop'],
-  ['otp_login', 'buyer_view'],
-  ['otp_login', 'seller_view'],
-  ['web_surfaces', 'buyer_view'],
-  ['web_surfaces', 'seller_view'],
-  ['alerts_loop', 'seller_view'],
-] as const;
-
-const whatsappPreviewThreads: Record<PreviewLanguage, PreviewMessage[]> = {
-  english: [
-    { side: 'left', type: 'notice', text: 'Live seller workflow on WhatsApp' },
-    { side: 'right', type: 'text', text: 'Hi' },
-    { side: 'left', type: 'text', text: 'Welcome to BolBazaar. Choose your preferred language.' },
-    { side: 'right', type: 'choice', text: 'English' },
-    { side: 'left', type: 'card', title: 'Seller menu', text: 'Dashboard, listings, khata, profile, verification' },
-    { side: 'right', type: 'voice', text: 'Voice note: "Khata dikhao"' },
-    { side: 'left', type: 'text', text: 'Outstanding due: Rs 400 from buyer 7076. 1 khata entry recorded.' },
-    { side: 'right', type: 'text', text: '20 kilo onion, 20 rupees kilo, Okhla pickup' },
-    { side: 'left', type: 'card', title: 'Listing live', text: 'Onion | 20 kg | Rs 20/kg | Buyer demand alert sent' },
+const whatsappPreviewThreads: Record<AppLanguage, PreviewMessage[]> = {
+  en: [
+    { side: 'left', type: 'notice', text: 'BolBazaar seller workflow' },
+    { side: 'right', type: 'text', text: 'Hi, I want to list today stock' },
+    { side: 'left', type: 'text', text: 'Welcome to BolBazaar. Send product, quantity, price, and pickup location.' },
+    { side: 'right', type: 'voice', text: 'Voice note: 30 kg tomato, Rs 28 per kg, Okhla pickup' },
+    { side: 'left', type: 'card', title: 'Listing created', text: 'Tomato | 30 kg | Rs 28/kg | Okhla pickup' },
+    { side: 'left', type: 'text', text: 'Buyer demand found nearby. Alert sent to matching buyers.' },
+    { side: 'right', type: 'text', text: 'Show khata' },
+    { side: 'left', type: 'card', title: 'Khata summary', text: 'Rs 680 due | 3 recent ledger notes | 1 payment pending' },
   ],
-  hindi: [
-    { side: 'left', type: 'notice', text: 'WhatsApp पर seller workflow' },
-    { side: 'right', type: 'text', text: 'नमस्ते' },
-    { side: 'left', type: 'text', text: 'BolBazaar में आपका स्वागत है। अपनी पसंद की भाषा चुनें।' },
-    { side: 'right', type: 'choice', text: 'हिंदी' },
-    { side: 'left', type: 'card', title: 'Seller menu', text: 'डैशबोर्ड, लिस्टिंग, खाता, प्रोफाइल, verification tools' },
-    { side: 'right', type: 'voice', text: 'आवाज़: "खाता दिखाओ"' },
-    { side: 'left', type: 'text', text: 'Buyer 7076 पर Rs 400 बाकी हैं। 1 खाता एंट्री दर्ज है।' },
-    { side: 'right', type: 'text', text: '20 किलो प्याज, 20 रुपये किलो, ओखला पिकअप' },
-    { side: 'left', type: 'card', title: 'Listing live', text: 'प्याज | 20 किलो | Rs 20/किलो | buyer alert भेजा गया' },
+  hi: [
+    { side: 'left', type: 'notice', text: 'BolBazaar seller workflow' },
+    { side: 'right', type: 'text', text: 'नमस्ते, आज का stock list करना है' },
+    { side: 'left', type: 'text', text: 'BolBazaar में आपका स्वागत है. Product, quantity, price और pickup location भेजें.' },
+    { side: 'right', type: 'voice', text: 'Voice note: 30 किलो टमाटर, Rs 28 per kg, Okhla pickup' },
+    { side: 'left', type: 'card', title: 'Listing created', text: 'Tomato | 30 kg | Rs 28/kg | Okhla pickup' },
+    { side: 'left', type: 'text', text: 'Nearby buyer demand मिला. Matching buyers को alert भेजा गया.' },
+    { side: 'right', type: 'text', text: 'खाता दिखाओ' },
+    { side: 'left', type: 'card', title: 'Khata summary', text: 'Rs 680 due | 3 recent ledger notes | 1 payment pending' },
   ],
 };
 
@@ -348,353 +135,215 @@ function scrollToSection(id: string) {
 }
 
 export default function LandingPage({
+  language,
+  onLanguageChange,
   stats,
   onOpenLogin,
 }: {
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
   stats: LandingStats;
   onOpenLogin: (role: 'buyer' | 'seller' | null) => void;
 }) {
-  const [activeExperienceId, setActiveExperienceId] = useState<ExperienceId>('whatsapp');
-  const [activeNodeId, setActiveNodeId] = useState<ArchitectureNodeId>('intake');
-  const [activeWorkflowStageId, setActiveWorkflowStageId] = useState<WorkflowStageId>('capture');
-  const [previewLanguage, setPreviewLanguage] = useState<PreviewLanguage>('english');
+  const [pulseIndex, setPulseIndex] = useState(0);
+  const copy = landingCopy[language];
+  const activePreviewThread = whatsappPreviewThreads[language];
 
-  const activeExperience = useMemo(
-    () => experienceModes.find((item) => item.id === activeExperienceId) || experienceModes[0],
-    [activeExperienceId],
-  );
-  const activeNode = useMemo(
-    () => architectureNodes.find((item) => item.id === activeNodeId) || architectureNodes[0],
-    [activeNodeId],
-  );
-  const activeWorkflowStage = useMemo(
-    () => workflowStages.find((item) => item.id === activeWorkflowStageId) || workflowStages[0],
-    [activeWorkflowStageId],
-  );
-  const activePreviewThread = whatsappPreviewThreads[previewLanguage];
-  const workflowNodeMap = useMemo(
-    () => Object.fromEntries(workflowCanvasNodes.map((node) => [node.id, node])),
-    [],
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setPulseIndex((index) => (index + 1) % activityStream.length);
+    }, 2200);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const dashboardStats = useMemo(
+    () => [
+      { label: 'Live listings', value: stats.liveListings || 24, delta: '+12%', accent: 'green' },
+      { label: 'Active sellers', value: stats.activeSellers || 8, delta: '+4 today', accent: 'orange' },
+      { label: 'Orders closed', value: stats.acceptedOrders || 16, delta: '91% fill rate', accent: 'blue' },
+      { label: 'Alerts sent', value: stats.alertsSent || 31, delta: 'Live demand', accent: 'mint' },
+    ],
+    [stats],
   );
 
   return (
-    <div className="landing-shell challenge-landing">
-      <header className="landing-nav">
+    <div className="landing-shell saas-landing">
+      <header className="landing-nav saas-nav">
         <button type="button" className="landing-brand" onClick={() => scrollToSection('hero')}>
           <span className="landing-brand-mark">BB</span>
           <span className="landing-brand-text">
             <strong>BolBazaar</strong>
-            <small>WhatsApp-first agri commerce</small>
+            <small>{copy.brand}</small>
           </span>
         </button>
 
         <nav className="landing-nav-links" aria-label="Landing page sections">
           <button type="button" className="landing-nav-link" onClick={() => scrollToSection('problem')}>
-            Problem
+            {copy.navProblem}
           </button>
           <button type="button" className="landing-nav-link" onClick={() => scrollToSection('solution')}>
-            Solution
+            {copy.navSolution}
           </button>
           <button type="button" className="landing-nav-link" onClick={() => scrollToSection('how-it-works')}>
-            How It Works
+            {copy.navHow}
           </button>
-          <button type="button" className="landing-nav-link" onClick={() => scrollToSection('architecture')}>
-            Architecture
+          <button type="button" className="landing-nav-link" onClick={() => scrollToSection('dashboard')}>
+            {copy.navDashboard}
           </button>
         </nav>
 
         <div className="landing-nav-actions">
+          <div className="language-switcher" aria-label="Language switcher">
+            <button type="button" className={language === 'en' ? 'language-switch-active' : ''} onClick={() => onLanguageChange('en')}>EN</button>
+            <button type="button" className={language === 'hi' ? 'language-switch-active' : ''} onClick={() => onLanguageChange('hi')}>HI</button>
+          </div>
           <button type="button" className="ghost-button small" onClick={() => onOpenLogin(null)}>
-            Login
+            {copy.login}
           </button>
-          <button type="button" className="primary-button small" onClick={() => scrollToSection('solution')}>
-            See solution
+          <button type="button" className="primary-button small" onClick={() => onOpenLogin('seller')}>
+            {copy.open}
           </button>
         </div>
       </header>
 
-      <section id="hero" className="landing-hero-panel">
-        <div className="landing-hero-copy">
-          <span className="landing-badge">Hackathon demo | Problem, solution, product, and architecture in one scroll</span>
-          <h1 className="landing-display">The operating layer for WhatsApp-first fresh produce commerce.</h1>
-          <p className="landing-lead">
-            BolBazaar turns seller chats, voice notes, verification steps, listings, and khata updates into a buyer
-            marketplace and a seller control tower, while keeping the seller journey aligned with WhatsApp behavior.
-          </p>
+      <section id="hero" className="saas-hero">
+        <div className="saas-hero-copy">
+          <span className="landing-badge">{copy.badge}</span>
+          <h1 className="landing-display">{copy.title}</h1>
+          <p className="landing-lead">{copy.lead}</p>
 
           <div className="hero-action-row">
-            <button type="button" className="primary-button" onClick={() => scrollToSection('how-it-works')}>
-              See how it works
-            </button>
-            <button type="button" className="ghost-button" onClick={() => onOpenLogin('buyer')}>
-              Open buyer view
+            <button type="button" className="primary-button" onClick={() => onOpenLogin('buyer')}>
+              {copy.buyerCta}
             </button>
             <button type="button" className="ghost-button" onClick={() => onOpenLogin('seller')}>
-              Open seller view
+              {copy.sellerCta}
             </button>
           </div>
 
           <div className="landing-proof-row">
-            {proofPills.map((item) => (
-              <span key={item} className="landing-proof-chip">
-                {item}
+            {trustSignals.map((signal) => (
+              <span key={signal} className="landing-proof-chip">
+                {signal}
               </span>
             ))}
           </div>
         </div>
 
-        <aside className="landing-command-card card">
-          <div className="landing-kpi-mosaic">
-            <article className="landing-kpi-card">
-              <span>Live listings</span>
-              <strong>{stats.liveListings}</strong>
-              <p>Structured from seller-side activity.</p>
-            </article>
-            <article className="landing-kpi-card">
-              <span>Active sellers</span>
-              <strong>{stats.activeSellers}</strong>
-              <p>Phone-number linked access for seller dashboards.</p>
-            </article>
-            <article className="landing-kpi-card">
-              <span>Accepted orders</span>
-              <strong>{stats.acceptedOrders}</strong>
-              <p>Buyer ordering loop already reflected in the product story.</p>
-            </article>
-            <article className="landing-kpi-card">
-              <span>Alerts sent</span>
-              <strong>{stats.alertsSent}</strong>
-              <p>Operational feedback remains visible to sellers.</p>
-            </article>
+        <aside id="dashboard" className="saas-dashboard card" aria-label="Live BolBazaar dashboard preview">
+          <div className="saas-dashboard-top">
+            <div>
+              <span className="live-dot" />
+              <span className="mini-pill">Live now</span>
+              <h2>{copy.dashboardTitle}</h2>
+            </div>
+            <button type="button" className="ghost-button small" onClick={() => onOpenLogin(null)}>
+              {copy.sync}
+            </button>
           </div>
 
-          <div className="landing-mini-stack">
-            <article className="landing-mini-card">
-              <span className="mini-pill">Problem statement</span>
-              <strong>Unstructured agri commerce becomes hard to trust and hard to scale.</strong>
-              <p>BolBazaar translates what sellers already do on WhatsApp into a system buyers and judges can understand.</p>
-            </article>
-            <article className="landing-mini-card is-contrast">
-              <span className="mini-pill">Solution framing</span>
-              <strong>One seller channel. Two polished interfaces.</strong>
-              <p>WhatsApp stays the operating rail. The web experience becomes the visibility and control layer.</p>
-            </article>
+          <div className="saas-kpi-grid">
+            {dashboardStats.map((item) => (
+              <article key={item.label} className={`saas-kpi-card saas-tone-${item.accent}`}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <small>{item.delta}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="saas-live-grid">
+            <section className="saas-panel saas-chart-panel">
+              <div className="saas-panel-head">
+                <strong>Supply Flow</strong>
+                <span>Today</span>
+              </div>
+              <div className="saas-bars">
+                {produceFlow.map((item) => (
+                  <div key={item.name} className="saas-bar-row">
+                    <span>{item.name}</span>
+                    <div className="saas-bar-track">
+                      <div className={`saas-bar-fill saas-tone-${item.tone}`} style={{ width: `${item.share}%` }} />
+                    </div>
+                    <strong>{item.share}%</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="saas-panel saas-activity-panel">
+              <div className="saas-panel-head">
+                <strong>Live Activity</strong>
+                <span>Auto-refresh</span>
+              </div>
+              <div className="saas-activity-list">
+                {activityStream.map((activity, index) => (
+                  <article key={activity.label} className={index === pulseIndex ? 'is-active' : ''}>
+                    <span className="saas-activity-dot" />
+                    <div>
+                      <strong>{activity.label}</strong>
+                      <small>{activity.meta}</small>
+                    </div>
+                    <em>{activity.value}</em>
+                  </article>
+                ))}
+              </div>
+            </section>
           </div>
         </aside>
       </section>
 
-      <section id="problem" className="landing-section">
+      <section id="problem" className="landing-section saas-story-section">
         <div className="section-heading">
-          <span className="eyebrow">Problem</span>
-          <h2>Fresh produce moves fast. Information about it does not.</h2>
-          <p>
-            The hackathon opportunity is not just commerce. It is the missing operating layer between informal WhatsApp
-            behavior and a trustworthy, searchable market experience.
-          </p>
+          <span className="eyebrow">{copy.problemEyebrow}</span>
+          <h2>{copy.problemTitle}</h2>
+          <p>{copy.problemBody}</p>
         </div>
-
-        <div className="landing-problem-grid">
-          {problemCards.map((card) => (
-            <article key={card.title} className="card landing-problem-card">
-              <span className="mini-pill">{card.kicker}</span>
-              <h3>{card.title}</h3>
-              <p>{card.body}</p>
-            </article>
-          ))}
-
-          <article className="card landing-problem-summary">
-            <span className="eyebrow">What judges should see</span>
-            <h3>A real-world adoption path, not a behavior rewrite.</h3>
-            <p>
-              BolBazaar wins the story by meeting sellers where they already operate, then using AI to create structure,
-              visibility, and a better transaction layer on top of that familiar behavior.
-            </p>
-            <div className="landing-summary-grid">
-              <div>
-                <span className="label">Adoption logic</span>
-                <strong>WhatsApp stays primary</strong>
-              </div>
-              <div>
-                <span className="label">Product logic</span>
-                <strong>Web adds clarity</strong>
-              </div>
-              <div>
-                <span className="label">AI logic</span>
-                <strong>Structure from natural input</strong>
-              </div>
-              <div>
-                <span className="label">Demo logic</span>
-                <strong>Interactive and judge-friendly</strong>
-              </div>
-            </div>
+        <div className="saas-story-grid">
+          <article className="card saas-story-card">
+            <span className="mini-pill">01</span>
+            <h3>Inventory disappears inside chats.</h3>
+            <p>Fresh stock changes quickly, but buyers cannot always see what is available now.</p>
+          </article>
+          <article className="card saas-story-card">
+            <span className="mini-pill">02</span>
+            <h3>Trust signals are hard to read.</h3>
+            <p>Pickup, seller activity, order status, and ledger context need one reliable place.</p>
+          </article>
+          <article className="card saas-story-card">
+            <span className="mini-pill">03</span>
+            <h3>Manual follow-up slows trade.</h3>
+            <p>BolBazaar turns repeated daily actions into structured workflows and live alerts.</p>
           </article>
         </div>
       </section>
 
-      <section id="solution" className="landing-section">
+      <section id="solution" className="landing-section saas-story-section">
         <div className="section-heading">
-          <span className="eyebrow">Solution</span>
-          <h2>BolBazaar is a dual-surface product built around one WhatsApp-native seller workflow.</h2>
-          <p>Select a surface to see how the experience changes by role while the underlying seller behavior stays aligned.</p>
-        </div>
-
-        <div className="landing-experience-layout">
-          <div className="landing-experience-main">
-            <div className="landing-switcher">
-              {experienceModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  className={`landing-switch-button ${activeExperience.id === mode.id ? 'landing-switch-button-active' : ''}`}
-                  onClick={() => setActiveExperienceId(mode.id)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
-            <article className="card landing-experience-card">
-              <span className="eyebrow">{activeExperience.eyebrow}</span>
-              <h3>{activeExperience.title}</h3>
-              <p>{activeExperience.description}</p>
-
-              <div className="landing-experience-metrics">
-                {activeExperience.metrics.map((item) => (
-                  <div key={item.label} className="landing-experience-metric">
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              <div className="landing-experience-content">
-                <div className="landing-experience-list">
-                  <h4>What this surface adds</h4>
-                  <ul className="bullet-list">
-                    {activeExperience.bullets.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="landing-compliance-note">
-                  <span className="mini-pill">WhatsApp alignment</span>
-                  <p>{activeExperience.compliance}</p>
-                </div>
-              </div>
-            </article>
-          </div>
-
-          <aside className="card landing-judge-card">
-            <span className="eyebrow">Why this works for the challenge</span>
-            <h3>A working narrative, not just a visual refresh.</h3>
-            <div className="landing-judge-stack">
-              <article>
-                <strong>AI with grounded inputs</strong>
-                <p>Voice notes, free text, and listings are converted into structured commerce operations.</p>
-              </article>
-              <article>
-                <strong>Adoption-first design</strong>
-                <p>The solution respects existing seller behavior instead of pretending a new app will magically be used.</p>
-              </article>
-              <article>
-                <strong>Interactive storytelling</strong>
-                <p>The landing page explains the problem, the product, and the system design before the demo branches into buyer and seller views.</p>
-              </article>
-            </div>
-          </aside>
+          <span className="eyebrow">{copy.solutionEyebrow}</span>
+          <h2>{copy.solutionTitle}</h2>
+          <p>{copy.solutionBody}</p>
         </div>
       </section>
 
-      <section id="how-it-works" className="landing-section">
+      <section id="how-it-works" className="landing-section saas-how-section">
         <div className="section-heading">
-          <span className="eyebrow">How It Works</span>
-          <h2>The product flow on the left, the WhatsApp journey inside the device.</h2>
-          <p>The workflow stays visual and clean, while the seller story plays out in a scrollable phone-shaped WhatsApp preview.</p>
+          <span className="eyebrow">{copy.howEyebrow}</span>
+          <h2>{copy.howTitle}</h2>
+          <p>{copy.howBody}</p>
         </div>
 
-        <div className="landing-demo-layout">
-          <div className="card landing-pipeline-board">
-            <div className="landing-pipeline-header">
-              <div>
-                <span className="mini-pill">Workflow canvas</span>
-                <h3>System map</h3>
-              </div>
-              <p>Tap the highlighted blocks to explain how seller activity becomes structured commerce.</p>
-            </div>
-
-            <div className="landing-workflow-canvas">
-              <svg className="landing-workflow-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                {workflowCanvasConnections.map(([fromId, toId]) => {
-                  const fromNode = workflowNodeMap[fromId];
-                  const toNode = workflowNodeMap[toId];
-                  if (!fromNode || !toNode) {
-                    return null;
-                  }
-                  return (
-                    <line
-                      key={`${fromId}-${toId}`}
-                      x1={fromNode.x}
-                      y1={fromNode.y}
-                      x2={toNode.x}
-                      y2={toNode.y}
-                    />
-                  );
-                })}
-              </svg>
-
-              {workflowCanvasNodes.map((node) => {
-                const interactive = Boolean(node.stage);
-                const isActive = node.stage ? node.stage === activeWorkflowStage.id : false;
-
-                return (
-                  <button
-                    key={node.id}
-                    type="button"
-                    className={`landing-workflow-node landing-workflow-node-${node.tone} ${isActive ? 'landing-workflow-node-active' : ''} ${interactive ? 'landing-workflow-node-interactive' : 'landing-workflow-node-static'}`}
-                    style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                    aria-pressed={interactive ? isActive : undefined}
-                    onClick={() => {
-                      if (node.stage) {
-                        setActiveWorkflowStageId(node.stage);
-                      }
-                    }}
-                  >
-                    <em>{node.tag}</em>
-                    <strong>{node.title}</strong>
-                    <span>{node.subtitle}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="landing-pipeline-detail">
-              <span className="mini-pill">Active stage</span>
-              <strong>{activeWorkflowStage.title}</strong>
-              <p>{activeWorkflowStage.body}</p>
-            </div>
-          </div>
-
+        <div className="landing-demo-layout saas-phone-layout">
           <aside className="card landing-phone-card">
             <div className="landing-phone-header">
               <div>
-                <span className="mini-pill">WhatsApp preview</span>
-                <h3>Seller chat preview</h3>
+                <span className="mini-pill">{copy.phoneSubtitle}</span>
+                <h3>{copy.phoneTitle}</h3>
               </div>
               <div className="landing-phone-language-switch" role="tablist" aria-label="WhatsApp preview language">
-                <button
-                  type="button"
-                  className={`landing-phone-language-button ${previewLanguage === 'english' ? 'landing-phone-language-button-active' : ''}`}
-                  onClick={() => setPreviewLanguage('english')}
-                >
-                  English
-                </button>
-                <button
-                  type="button"
-                  className={`landing-phone-language-button ${previewLanguage === 'hindi' ? 'landing-phone-language-button-active' : ''}`}
-                  onClick={() => setPreviewLanguage('hindi')}
-                >
-                  हिंदी
-                </button>
+                <button type="button" className={`landing-phone-language-button ${language === 'en' ? 'landing-phone-language-button-active' : ''}`} onClick={() => onLanguageChange('en')}>English</button>
+                <button type="button" className={`landing-phone-language-button ${language === 'hi' ? 'landing-phone-language-button-active' : ''}`} onClick={() => onLanguageChange('hi')}>हिंदी</button>
               </div>
             </div>
 
@@ -718,10 +367,7 @@ export default function LandingPage({
 
                 <div className="landing-chat-thread">
                   {activePreviewThread.map((message, index) => (
-                    <div
-                      key={`${previewLanguage}-${index}-${message.text}`}
-                      className={`landing-chat-row ${message.side === 'right' ? 'landing-chat-row-right' : ''}`}
-                    >
+                    <div key={`${language}-${index}-${message.text}`} className={`landing-chat-row ${message.side === 'right' ? 'landing-chat-row-right' : ''}`}>
                       <div className={`landing-chat-bubble landing-chat-bubble-${message.type}`}>
                         {message.title && <strong>{message.title}</strong>}
                         {message.type === 'voice' && <span className="landing-chat-wave" aria-hidden="true" />}
@@ -732,138 +378,147 @@ export default function LandingPage({
                 </div>
 
                 <div className="landing-phone-input">
-                  <span className="landing-phone-input-pill">Voice notes</span>
+                  <span className="landing-phone-input-pill">Voice</span>
                   <span className="landing-phone-input-pill">Listings</span>
                   <span className="landing-phone-input-pill">Khata</span>
                 </div>
               </div>
             </div>
           </aside>
-        </div>
-      </section>
 
-      <section id="architecture" className="landing-section">
-        <div className="section-heading">
-          <span className="eyebrow">Architecture</span>
-          <h2>Interactive system view for the hackathon pitch.</h2>
-          <p>Tap any block to explain the technical pipeline in a way that feels visual, structured, and demo-ready.</p>
-        </div>
-
-        <div className="landing-architecture-layout">
-          <div className="card landing-architecture-board">
-            <div className="landing-architecture-grid">
-              {architectureNodes.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  className={`landing-architecture-node ${activeNode.id === node.id ? 'landing-architecture-node-active' : ''}`}
-                  onClick={() => setActiveNodeId(node.id)}
-                >
-                  <span className="landing-node-tag">{node.tag}</span>
-                  <strong>{node.title}</strong>
-                  <small>{node.subtitle}</small>
-                </button>
-              ))}
+          <div className="card saas-flow-card">
+            <span className="mini-pill">Workflow</span>
+            <h3>Chat signals become operating data.</h3>
+            <div className="saas-flow-steps">
+              <span>WhatsApp message</span>
+              <span>Listing and khata extraction</span>
+              <span>Buyer marketplace update</span>
+              <span>Seller dashboard alert</span>
             </div>
           </div>
-
-          <aside className="card landing-architecture-detail">
-            <span className="eyebrow">{activeNode.tag}</span>
-            <h3>{activeNode.title}</h3>
-            <p>{activeNode.body}</p>
-            <div className="landing-detail-points">
-              {activeNode.points.map((point) => (
-                <span key={point} className="landing-detail-pill">
-                  {point}
-                </span>
-              ))}
-            </div>
-          </aside>
         </div>
       </section>
 
-      <section className="landing-section">
+      <section id="operations" className="landing-section saas-section">
         <div className="section-heading">
-          <span className="eyebrow">Interface Preview</span>
-          <h2>Two distinct dashboards after login, one consistent product story.</h2>
+          <span className="eyebrow">Operations</span>
+          <h2>{copy.operationsTitle}</h2>
+          <p>{copy.operationsBody}</p>
         </div>
 
-        <div className="landing-preview-grid">
-          <article className="card landing-preview-card">
-            <div className="landing-preview-head">
-              <span className="mini-pill">Buyer interface</span>
-              <strong>Marketplace view</strong>
-            </div>
-            <div className="landing-preview-frame">
-              <div className="landing-preview-metric strong">
-                <span>Live matches</span>
-                <strong>{stats.liveListings}</strong>
+        <div className="saas-ops-grid">
+          <article className="card saas-ops-card">
+            <span className="mini-pill">Seller control</span>
+            <h3>Inventory and order readiness in one place.</h3>
+            <p>Track active listings, available quantity, accepted orders, pickup location, and customer activity.</p>
+            <div className="saas-mini-metrics">
+              <div>
+                <strong>{stats.liveListings || 24}</strong>
+                <span>Listings</span>
               </div>
-              <div className="landing-preview-list">
-                <div className="landing-preview-row">
-                  <strong>Search produce</strong>
-                  <span>Tomato, onion, potato, leafy greens</span>
-                </div>
-                <div className="landing-preview-row">
-                  <strong>Compare sellers</strong>
-                  <span>Pickup, price, trust, order readiness</span>
-                </div>
-                <div className="landing-preview-row">
-                  <strong>Place orders</strong>
-                  <span>Structured order flow instead of scattered chat negotiation</span>
-                </div>
+              <div>
+                <strong>{stats.activeSellers || 8}</strong>
+                <span>Sellers</span>
               </div>
             </div>
           </article>
 
-          <article className="card landing-preview-card">
-            <div className="landing-preview-head">
-              <span className="mini-pill">Seller interface</span>
-              <strong>Control tower view</strong>
+          <article className="card saas-ops-card">
+            <span className="mini-pill">Buyer demand</span>
+            <h3>Search behavior turns into marketplace intelligence.</h3>
+            <p>Demand searches can surface matches, price intent, and seller-side alerts before inventory goes stale.</p>
+            <div className="saas-demand-radar">
+              <span style={{ '--size': '86%' } as CSSProperties} />
+              <span style={{ '--size': '62%' } as CSSProperties} />
+              <span style={{ '--size': '38%' } as CSSProperties} />
+              <strong>Live</strong>
+            </div>
+          </article>
+
+          <article className="card saas-ops-card">
+            <span className="mini-pill">Ledger clarity</span>
+            <h3>Khata activity stays visible with orders.</h3>
+            <p>Outstanding amounts and ledger entries sit beside operational activity instead of being buried in chat.</p>
+            <div className="saas-ledger-list">
+              <span><strong>Paid</strong><em>Rs 1,240</em></span>
+              <span><strong>Due</strong><em>Rs 680</em></span>
+              <span><strong>Review</strong><em>3 notes</em></span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="market" className="landing-section saas-market-section">
+        <div className="section-heading">
+          <span className="eyebrow">Market</span>
+          <h2>Built for repeated daily use, not a static storefront.</h2>
+          <p>
+            The buyer marketplace and seller dashboard share the same operating data, so every action updates the
+            wider BolBazaar system.
+          </p>
+        </div>
+
+        <div className="saas-market-grid">
+          <article className="card saas-market-card">
+            <div className="saas-panel-head">
+              <strong>Buyer Marketplace</strong>
+              <span>Search, compare, order</span>
             </div>
             <div className="landing-preview-frame">
-              <div className="landing-preview-metric strong">
-                <span>Seller signals</span>
-                <strong>Orders + khata + alerts</strong>
+              <div className="landing-preview-row">
+                <strong>Fresh listings</strong>
+                <span>Filter by product, price, seller, and pickup area.</span>
               </div>
-              <div className="landing-preview-list">
-                <div className="landing-preview-row">
-                  <strong>Track khata</strong>
-                  <span>Ledger entries captured from voice or text notes</span>
-                </div>
-                <div className="landing-preview-row">
-                  <strong>Review orders</strong>
-                  <span>Pending, accepted, and completed activity in one view</span>
-                </div>
-                <div className="landing-preview-row">
-                  <strong>Stay aligned</strong>
-                  <span>Same phone number, same WhatsApp-origin workflow, better visibility</span>
-                </div>
+              <div className="landing-preview-row">
+                <strong>Seller context</strong>
+                <span>Use activity signals to choose with more confidence.</span>
+              </div>
+              <div className="landing-preview-row">
+                <strong>Order loop</strong>
+                <span>Place structured orders that sellers can accept quickly.</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="card saas-market-card">
+            <div className="saas-panel-head">
+              <strong>Seller Dashboard</strong>
+              <span>Inventory, orders, khata</span>
+            </div>
+            <div className="landing-preview-frame">
+              <div className="landing-preview-row">
+                <strong>Live KPIs</strong>
+                <span>Listings, quantity, revenue, pending orders, and repeat customers.</span>
+              </div>
+              <div className="landing-preview-row">
+                <strong>Recent activity</strong>
+                <span>Orders, alerts, and ledger events stay easy to review.</span>
+              </div>
+              <div className="landing-preview-row">
+                <strong>One identity</strong>
+                <span>Phone-linked access keeps seller operations connected.</span>
               </div>
             </div>
           </article>
         </div>
       </section>
 
-      <section className="card landing-cta-panel">
+      <section className="card landing-cta-panel saas-cta-panel">
         <div>
-          <span className="eyebrow">Ready to demo</span>
-          <h2>Open the buyer or seller interface, or start from role login.</h2>
-          <p>
-            The landing page now frames the problem and solution like a challenge submission, then routes into the
-            appropriate product surface without losing the WhatsApp-first story.
-          </p>
+          <span className="eyebrow">Start operating</span>
+          <h2>Open BolBazaar and move directly into the right workspace.</h2>
+          <p>Login with phone OTP, then continue as a buyer or seller with live marketplace data already loaded.</p>
         </div>
 
         <div className="landing-cta-actions">
           <button type="button" className="primary-button" onClick={() => onOpenLogin(null)}>
-            Login with phone OTP
+            Login with OTP
           </button>
           <button type="button" className="ghost-button" onClick={() => onOpenLogin('buyer')}>
-            Buyer demo
+            Buyer view
           </button>
           <button type="button" className="ghost-button" onClick={() => onOpenLogin('seller')}>
-            Seller demo
+            Seller view
           </button>
         </div>
       </section>

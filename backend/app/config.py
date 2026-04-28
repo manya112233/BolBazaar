@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     storage_mode: str = Field(default='firestore', alias='STORAGE_MODE')
     allow_local_fallback: bool = Field(default=True, alias='ALLOW_LOCAL_FALLBACK')
     data_file: Path = Field(default=Path('./data/demo_db.json'), alias='DATA_FILE')
+    media_dir: Path = Field(default=Path('./data/media'), alias='MEDIA_DIR')
+    api_public_base_url: str = Field(default='http://localhost:8000', alias='API_PUBLIC_BASE_URL')
 
     gemini_api_key: str | None = Field(default=None, alias='GEMINI_API_KEY')
     gemini_model: str = Field(default='gemini-2.5-flash', alias='GEMINI_MODEL')
@@ -45,4 +47,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     settings.data_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.media_dir.mkdir(parents=True, exist_ok=True)
     return settings

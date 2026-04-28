@@ -1,7 +1,37 @@
-import type { CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import type { AppLanguage } from '../App';
 import type { AuthSession, Insight, Notification, Order, SellerDashboard, SellerLedgerView, SellerProfile } from '../types';
 
+const sellerCopy = {
+  en: {
+    eyebrow: 'Seller interface',
+    title: 'Track listings, khata, and order movement for the same number that already runs on WhatsApp.',
+    body: 'Logged in as {phone}. This dashboard mirrors seller data generated from WhatsApp onboarding, listing creation, verification, and order alerts.',
+    live: 'Seller operations live',
+    refresh: 'Refresh data',
+    refreshing: 'Refreshing...',
+    listings: 'Live listings',
+    stock: 'Available stock',
+    revenue: 'Revenue today',
+    khata: 'Outstanding khata',
+  },
+  hi: {
+    eyebrow: 'Seller interface',
+    title: 'WhatsApp पर चलने वाले उसी नंबर के लिए listings, khata और orders track करें.',
+    body: '{phone} के रूप में logged in. यह dashboard WhatsApp onboarding, listing creation, verification और order alerts से बना seller data दिखाता है.',
+    live: 'Seller operations live',
+    refresh: 'Data refresh करें',
+    refreshing: 'Refresh हो रहा है...',
+    listings: 'Live listings',
+    stock: 'Available stock',
+    revenue: 'आज की revenue',
+    khata: 'Outstanding khata',
+  },
+};
+
 export default function SellerWorkspace({
+  language,
+  onLanguageChange,
   session,
   seller,
   dashboard,
@@ -12,7 +42,10 @@ export default function SellerWorkspace({
   loading,
   onRefresh,
   onRespondOrder,
+  onRecordLedgerPayment,
 }: {
+  language: AppLanguage;
+  onLanguageChange: (language: AppLanguage) => void;
   session: AuthSession;
   seller: SellerProfile | null;
   dashboard: SellerDashboard | null;
@@ -23,26 +56,71 @@ export default function SellerWorkspace({
   loading: boolean;
   onRefresh: () => void;
   onRespondOrder: (orderId: string, decision: 'accept' | 'reject') => Promise<void>;
+  onRecordLedgerPayment: (payload: { buyer_name: string; amount_paid: number; notes?: string }) => Promise<void>;
 }) {
+  const copy = sellerCopy[language];
+  const [paymentBuyerName, setPaymentBuyerName] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const visibleOrders = orders
     .slice()
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const buyersWithDues = useMemo(() => {
+    const balances = new Map<string, number>();
+    for (const entry of ledger?.items || []) {
+      balances.set(entry.buyer_name, Math.round(((balances.get(entry.buyer_name) || 0) + entry.balance_delta) * 100) / 100);
+    }
+    return Array.from(balances.entries())
+      .filter(([, balance]) => balance > 0)
+      .map(([buyerName]) => buyerName);
+  }, [ledger]);
+
+  const handleLedgerPaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const amount = Number(paymentAmount);
+    if (!paymentBuyerName.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setPaymentError('Enter buyer name and a valid payment amount.');
+      return;
+    }
+
+    setPaymentSaving(true);
+    setPaymentError(null);
+    try {
+      await onRecordLedgerPayment({
+        buyer_name: paymentBuyerName.trim(),
+        amount_paid: amount,
+        notes: paymentNotes.trim() || undefined,
+      });
+      setPaymentBuyerName('');
+      setPaymentAmount('');
+      setPaymentNotes('');
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : 'Could not update khata.');
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
 
   return (
     <div className="workspace-shell">
       <section className="workspace-hero seller-hero">
         <div>
-          <span className="eyebrow">Seller interface</span>
-          <h1>Track listings, khata, and order movement for the same number that already runs on WhatsApp.</h1>
-          <p>
-            Logged in as {session.phone_number}. This dashboard mirrors the seller data generated from WhatsApp onboarding,
-            listing creation, verification, and order alerts.
-          </p>
+          <div className="workspace-title-row">
+            <span className="eyebrow">{copy.eyebrow}</span>
+            <div className="language-switcher" aria-label="Language switcher">
+              <button type="button" className={language === 'en' ? 'language-switch-active' : ''} onClick={() => onLanguageChange('en')}>EN</button>
+              <button type="button" className={language === 'hi' ? 'language-switch-active' : ''} onClick={() => onLanguageChange('hi')}>HI</button>
+            </div>
+          </div>
+          <h1>{copy.title}</h1>
+          <p>{copy.body.replace('{phone}', session.phone_number)}</p>
         </div>
         <div className="dashboard-live-panel card seller-live-panel">
           <div className="live-panel-header">
             <span className="live-dot" />
-            <span>Seller operations live</span>
+            <span>{copy.live}</span>
           </div>
           <div className="seller-signal-stack" aria-hidden="true">
             <span style={{ '--delay': '0s' } as CSSProperties}>Order sync</span>
@@ -50,7 +128,7 @@ export default function SellerWorkspace({
             <span style={{ '--delay': '1.4s' } as CSSProperties}>Alert sent</span>
           </div>
           <div className="live-panel-actions">
-            <button className="primary-button" onClick={onRefresh}>{loading ? 'Refreshing...' : 'Refresh data'}</button>
+            <button className="primary-button" onClick={onRefresh}>{loading ? copy.refreshing : copy.refresh}</button>
           </div>
         </div>
       </section>
@@ -58,19 +136,19 @@ export default function SellerWorkspace({
       {dashboard ? (
         <section className="workspace-kpis">
           <article className="card workspace-kpi">
-            <span>Live listings</span>
+            <span>{copy.listings}</span>
             <strong>{dashboard.live_listings_count}</strong>
           </article>
           <article className="card workspace-kpi">
-            <span>Available stock</span>
+            <span>{copy.stock}</span>
             <strong>{dashboard.total_available_kg} kg</strong>
           </article>
           <article className="card workspace-kpi">
-            <span>Revenue today</span>
+            <span>{copy.revenue}</span>
             <strong>Rs {dashboard.sold_today_revenue}</strong>
           </article>
           <article className="card workspace-kpi">
-            <span>Outstanding khata</span>
+            <span>{copy.khata}</span>
             <strong>Rs {dashboard.ledger_outstanding_amount}</strong>
           </article>
         </section>
@@ -125,6 +203,45 @@ export default function SellerWorkspace({
                 <p className="muted compact">Captured from the existing WhatsApp voice-note and text-note flow.</p>
               </div>
             </div>
+            <form className="ledger-payment-form" onSubmit={handleLedgerPaymentSubmit}>
+              <div>
+                <label className="label">Buyer name</label>
+                <input
+                  list="ledger-buyers"
+                  value={paymentBuyerName}
+                  onChange={(event) => setPaymentBuyerName(event.target.value)}
+                  placeholder="Raju"
+                />
+                <datalist id="ledger-buyers">
+                  {buyersWithDues.map((buyerName) => (
+                    <option key={buyerName} value={buyerName} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="label">Amount paid</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={paymentAmount}
+                  onChange={(event) => setPaymentAmount(event.target.value)}
+                  placeholder="500"
+                />
+              </div>
+              <div className="ledger-payment-notes">
+                <label className="label">Note</label>
+                <input
+                  value={paymentNotes}
+                  onChange={(event) => setPaymentNotes(event.target.value)}
+                  placeholder="UPI, cash, part payment..."
+                />
+              </div>
+              <button className="primary-button" type="submit" disabled={paymentSaving}>
+                {paymentSaving ? 'Updating...' : 'Record payment'}
+              </button>
+              {paymentError && <p className="error-text">{paymentError}</p>}
+            </form>
             {!ledger || ledger.items.length === 0 ? (
               <p className="muted">No khata records yet.</p>
             ) : (

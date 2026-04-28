@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies import get_marketplace, get_store
 from app.main import app
-from app.schemas import Listing, Order, ProduceQualityAssessment, SellerProfile, SellerSession
+from app.schemas import LedgerEntry, Listing, Order, ProduceQualityAssessment, SellerProfile, SellerSession
 from app.services.extraction import ExtractionService
 from app.services.marketplace import MarketplaceService
 from app.services.seller_flow import MENU_ACTION_ORDERS, MENU_ACTION_VERIFICATION, SellerFlowService
@@ -1203,6 +1203,71 @@ def test_khata_summary_reduces_outstanding_after_payment_note(tmp_path: Path) ->
     assert 'Outstanding: Rs 0' in whatsapp.text_messages[-1]['body']
     assert 'Collected: Rs 250' in whatsapp.text_messages[-1]['body']
     assert 'Buyers with dues: 0' in whatsapp.text_messages[-1]['body']
+
+
+def test_payment_note_keeps_buyer_name_without_auxiliary_verbs(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path / 'db.json')
+    _seed_active_seller(store, preferred_language='en')
+    marketplace = MarketplaceService(store)
+    whatsapp = RecordingWhatsApp()
+    flow = SellerFlowService(store=store, marketplace=marketplace, whatsapp=whatsapp)
+
+    sale_result = flow.handle_message(
+        seller_id='919971497076',
+        profile_name='Manya',
+        message_text='Raju bought 10 kg tomatoes for Rs 250 today, but still owes me Rs 100.',
+        image_url=None,
+    )
+    payment_result = flow.handle_message(
+        seller_id='919971497076',
+        profile_name='Manya',
+        message_text='Raju has paid me 100 rupees.',
+        image_url=None,
+    )
+    ledger = marketplace.build_seller_ledger('919971497076')
+
+    assert sale_result == {'ok': True, 'handled': 'seller_ledger_recorded'}
+    assert payment_result == {'ok': True, 'handled': 'seller_ledger_recorded'}
+    assert ledger is not None
+    assert ledger.items[0].buyer_name == 'Raju'
+    assert ledger.summary.total_outstanding_amount == 0
+    assert ledger.summary.buyers_with_balance == 0
+
+
+def test_seller_ledger_reprices_sale_entries_from_latest_listing_price(tmp_path: Path) -> None:
+    store = JsonStore(tmp_path / 'db.json')
+    _seed_active_seller(store, preferred_language='en')
+    marketplace = MarketplaceService(store)
+    store.save_listing(Listing(
+        seller_id='919971497076',
+        seller_name='Manya',
+        product_name='Potato',
+        category='vegetables',
+        quantity_kg=40,
+        available_kg=40,
+        price_per_kg=15,
+        pickup_location='Laxmi Nagar',
+    ))
+    store.save_ledger_entry(LedgerEntry(
+        seller_id='919971497076',
+        buyer_name='Raju',
+        entry_kind='sale',
+        product_name='Potato',
+        quantity_kg=10,
+        total_amount=100,
+        amount_paid=0,
+        amount_due=100,
+        balance_delta=100,
+        summary='Raju bought 10 kg Potato. Total Rs 100, due Rs 100.',
+    ))
+
+    ledger = marketplace.build_seller_ledger('919971497076')
+
+    assert ledger is not None
+    assert ledger.summary.total_outstanding_amount == 150
+    assert ledger.items[0].total_amount == 150
+    assert ledger.items[0].amount_due == 150
+    assert 'Total Rs 150' in ledger.items[0].summary
 
 
 def test_whatsapp_webhook_records_voice_ledger_entry_and_exposes_dashboard_data(tmp_path: Path, monkeypatch) -> None:
